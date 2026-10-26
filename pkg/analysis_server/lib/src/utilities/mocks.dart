@@ -348,9 +348,13 @@ class TestPluginManager(final ResourceProvider resourceProvider)
       throw Exception('Unexpected invocation of ${invocation.memberName}');
 
   @override
-  Folder pluginStateFolder(String contextRootPath) {
+  Folder pluginStateFolder(String key) {
+    var pathContext = resourceProvider.pathContext;
     return resourceProvider.getFolder(
-      resourceProvider.pathContext.join(contextRootPath, '.plugin_state'),
+      pathContext.join(
+        '${pathContext.separator}plugin_state',
+        (key.hashCode & 0x7fffffff).toRadixString(16),
+      ),
     );
   }
 

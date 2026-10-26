@@ -134,11 +134,15 @@ plugins:
 
     expect(manager.pluginIsolates, hasLength(2));
 
+    String pubspecOf(TestPluginIsolate isolate) =>
+        getFolder(isolate.pluginId).getFile('pubspec.yaml').readAsStringSync();
+    // The plugin folders are named by their content; the group with the
+    // inner options' `foo: ^2.0.0` comes first.
     var isolate0 = manager.pluginIsolates.firstWhere(
-      (e) => !e.pluginId.contains('_group_1'),
+      (e) => pubspecOf(e as TestPluginIsolate).contains('2.0.0'),
     ) as TestPluginIsolate;
     var isolate1 = manager.pluginIsolates.firstWhere(
-      (e) => e.pluginId.contains('_group_1'),
+      (e) => pubspecOf(e as TestPluginIsolate).contains('1.0.0'),
     ) as TestPluginIsolate;
 
     var setConfigurations0 =

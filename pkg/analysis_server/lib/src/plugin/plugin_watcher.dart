@@ -179,12 +179,11 @@ class PluginWatcher implements DriverWatcher {
             : groupDependencyOverrides,
       );
 
-      // TODO(srawlins): Better to name the folder based on a hash of the...
-      // maybe the plugin names. Maybe the configutations.
-      var folderName = groups.length == 1
-          ? contextRoot.root.path
-          : '${contextRoot.root.path}_group_$i';
-      var sharedPluginFolder = manager.pluginStateFolder(folderName);
+      // The folder is named by the generated pubspec, so that every context
+      // root that enables the same plugins from the same sources shares one
+      // resolved and compiled plugin package.
+      var newPubspecContent = packageGenerator.generatePubspec();
+      var sharedPluginFolder = manager.pluginStateFolder(newPubspecContent);
 
       manager.instrumentationService.logInfo(
         "Creating shared plugin folder at '${sharedPluginFolder.path}' for "
@@ -196,7 +195,6 @@ class PluginWatcher implements DriverWatcher {
       );
       sharedPluginFolder.create();
       var pubspecFile = sharedPluginFolder.getFile(file_paths.pubspecYaml);
-      var newPubspecContent = packageGenerator.generatePubspec();
       // Only write the pubspec if it is different, to support caching.
       if (!pubspecFile.exists ||
           newPubspecContent != pubspecFile.readAsStringSync()) {

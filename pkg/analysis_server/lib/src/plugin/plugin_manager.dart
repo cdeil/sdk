@@ -408,16 +408,19 @@ class PluginManager {
     ];
   }
 
-  /// Returns the "plugin state" folder for a plugin at [pluginPath].
+  /// Returns the "plugin state" folder for the plugin package identified by
+  /// [key]: the path of a legacy plugin, or the generated pubspec of a shared
+  /// plugin package, so that every context root enabling the same plugins
+  /// from the same sources shares one resolved and compiled package.
   ///
   /// This is a directory under the state location for '.plugin_manager', named
-  /// with a hash based on [pluginPath] and the version of the Dart SDK.
-  Folder pluginStateFolder(String pluginPath) {
+  /// with a hash based on [key] and the version of the Dart SDK.
+  Folder pluginStateFolder(String key) {
     var stateFolder = _resourceProvider.getStateLocation('.plugin_manager');
     if (stateFolder == null) {
       throw PluginException('No state location, so plugin could not be copied');
     }
-    var stateName = _uniqueDirectoryName(pluginPath);
+    var stateName = _uniqueDirectoryName(key);
     return stateFolder.getFolder(stateName);
   }
 
