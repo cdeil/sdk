@@ -3,12 +3,18 @@
 // BSD-style license that can be found in the LICENSE file.
 
 import 'dart:async';
+import 'dart:io' as io;
 
 import 'package:analysis_server_plugin/edit/dart/correction_producer.dart';
 import 'package:analysis_server_plugin/plugin.dart';
 import 'package:analysis_server_plugin/registry.dart';
 import 'package:analysis_server_plugin/src/correction/ignore_diagnostic.dart';
+import 'package:analysis_server_plugin/src/correction/fix_generators.dart';
 import 'package:analysis_server_plugin/src/plugin_server.dart';
+import 'package:analyzer/file_system/file_system.dart';
+import 'package:analyzer/file_system/physical_file_system.dart';
+import 'package:analyzer/src/dart/analysis/file_byte_store.dart';
+import 'package:analyzer/src/util/sdk.dart';
 import 'package:analyzer/dart/ast/ast.dart';
 import 'package:analyzer/src/test_utilities/platform.dart';
 import 'package:analyzer/src/test_utilities/test_code_format.dart';
@@ -30,6 +36,7 @@ import 'plugin_server_test_base.dart';
 
 void main() {
   defineReflectiveTests(PluginServerTest);
+  defineReflectiveTests(PluginServerByteStoreTest);
   defineReflectiveTests(PluginServerMapTest);
 }
 
@@ -255,6 +262,105 @@ bool b = false;
   }
 }
 
+/// Tests that run the plugin server on the physical file system, so that the
+/// byte store can persist analysis results between plugin instances.
+@reflectiveTest
+class PluginServerByteStoreTest {
+  late io.Directory tempDirectory;
+  late Folder byteStoreRoot;
+  late Folder sdkRoot;
+  late Folder packageRoot;
+
+  PhysicalResourceProvider get resourceProvider =>
+      PhysicalResourceProvider.INSTANCE;
+
+  Future<void> setUp() async {
+    tempDirectory = io.Directory.systemTemp.createTempSync('plugin_byte_store');
+    var root = resourceProvider.getFolder(tempDirectory.path);
+    byteStoreRoot = root.getFolder('byteStore')..create();
+    sdkRoot = resourceProvider.getFolder(getSdkPath());
+    packageRoot = root.getFolder('package1')..create();
+    packageRoot.getFolder('lib').create();
+    packageRoot.getFile('analysis_options.yaml').writeAsStringSync('''
+plugins:
+  no_literals:
+    path: some/path
+''');
+    packageRoot
+        .getFolder('lib')
+        .getFile('test.dart')
+        .writeAsStringSync('bool b = false;\n');
+  }
+
+  void tearDown() {
+    PluginServer.registries.clear();
+    registeredFixGenerators.clearLintProducers();
+    registeredFixGenerators.clearWarningProducers();
+    tempDirectory.deleteSync(recursive: true);
+  }
+
+  Future<void> test_persistsAcrossInstances() async {
+    var first = await _analyzeWithNewServer();
+    expect(first.errors, hasLength(1));
+    expect(first.fileByteStore, isNotNull);
+    expect(first.fileByteStore!.writeCount, greaterThan(0));
+    expect(first.fileByteStore!.pendingWriteCount, 0);
+    expect(byteStoreRoot.getChildren(), isNotEmpty);
+
+    var second = await _analyzeWithNewServer();
+    expect(second.errors, hasLength(1));
+    expect(second.errors.single.message, first.errors.single.message);
+    expect(second.fileByteStore!.readCount, greaterThan(0));
+    expect(
+      second.fileByteStore!.readMissCount,
+      lessThan(second.fileByteStore!.readCount),
+    );
+  }
+
+  Future<({List<protocol.AnalysisError> errors, FileByteStore? fileByteStore})>
+  _analyzeWithNewServer() async {
+    PluginServer.registries.clear();
+    registeredFixGenerators.clearLintProducers();
+    registeredFixGenerators.clearWarningProducers();
+    var channel = FakeChannel();
+    var server = PluginServer(
+      resourceProvider: resourceProvider,
+      plugins: [_NoLiteralsPlugin()],
+    );
+    await server.initialize();
+    server.start(channel);
+    await server.handlePluginVersionCheck(
+      protocol.PluginVersionCheckParams(
+        byteStoreRoot.path,
+        sdkRoot.path,
+        '0.0.1',
+      ),
+    );
+    var testFile = packageRoot.getFolder('lib').getFile('test.dart');
+    var errorsQueue = StreamQueue(
+      channel.notifications
+          .where((n) => n.event == protocol.ANALYSIS_NOTIFICATION_ERRORS)
+          .map((n) => protocol.AnalysisErrorsParams.fromNotification(n))
+          .where((p) => p.file == testFile.path),
+    );
+    var contextRoot = protocol.ContextRoot(packageRoot.path, []);
+    await Future.wait([
+      channel.sendRequest(
+        protocol.AnalysisSetContextRootsParams([contextRoot]),
+      ),
+      channel.sendRequest(
+        protocol.AnalysisSetAnalysisRootsParams([contextRoot.root], []),
+      ),
+    ]);
+    var params = await errorsQueue.next;
+    await channel.sendRequest(protocol.PluginShutdownParams());
+    return (
+      errors: params.errors,
+      fileByteStore: server.fileByteStoreForTesting,
+    );
+  }
+}
+
 @reflectiveTest
 class PluginServerTest extends PluginServerTestBase with PluginServerTestMixin {
   late _NoLiteralsPlugin _plugin;
@@ -269,6 +375,10 @@ class PluginServerTest extends PluginServerTestBase with PluginServerTestMixin {
       plugins: [_plugin],
     );
     await startPlugin();
+  }
+
+  Future<void> test_byteStore_memoryResourceProvider_noFileStore() async {
+    expect(pluginServer.fileByteStoreForTesting, isNull);
   }
 
   Future<void> test_diagnosticsCanBeIgnored() async {
