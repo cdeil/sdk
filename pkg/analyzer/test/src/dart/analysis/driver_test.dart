@@ -2523,6 +2523,63 @@ class A {}
 ''');
   }
 
+  test_getResolvedLibrary_afterProduceErrors_reusesRecent() async {
+    var a = newFile('$testPackageLibPath/a.dart', r'''
+class A {}
+''');
+
+    var driver = driverFor(testFile);
+    var collector = DriverEventCollector(driver);
+
+    // Not a priority file: analyzed by the `produceErrors` loop.
+    driver.addFile2(a);
+    await assertEventsText(collector, r'''
+[status] working
+[operation] analyzeFile
+  file: /home/test/lib/a.dart
+  library: /home/test/lib/a.dart
+[stream]
+  ResolvedUnitResult #0
+    path: /home/test/lib/a.dart
+    uri: package:test/a.dart
+    flags: exists isLibrary
+[status] idle
+''');
+
+    // The library was just produced, so no second analysis is needed.
+    collector.getResolvedLibrary('A1', a);
+    await assertEventsText(collector, r'''
+[future] getResolvedLibrary A1
+  ResolvedLibraryResult #1
+    element: package:test/a.dart
+    units
+      ResolvedUnitResult #0
+''');
+
+    // A change invalidates the recent result.
+    driver.changeFile2(a);
+    collector.getResolvedLibrary('A2', a);
+    await assertEventsText(collector, r'''
+[status] working
+[operation] analyzeFile
+  file: /home/test/lib/a.dart
+  library: /home/test/lib/a.dart
+[operation] reuseLinkedBundle
+  package:test/a.dart
+[stream]
+  ResolvedUnitResult #2
+    path: /home/test/lib/a.dart
+    uri: package:test/a.dart
+    flags: exists isLibrary
+[status] idle
+[future] getResolvedLibrary A2
+  ResolvedLibraryResult #3
+    element: package:test/a.dart
+    units
+      ResolvedUnitResult #2
+''');
+  }
+
   test_getResolvedLibrary_cachePriority() async {
     var a = newFile('$testPackageLibPath/a.dart', r'''
 part 'b.dart';
