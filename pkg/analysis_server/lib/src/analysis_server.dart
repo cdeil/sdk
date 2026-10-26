@@ -360,6 +360,7 @@ abstract class AnalysisServer {
       instrumentationService,
       sessionLogger,
       processRunner: processRunner ?? ProcessRunner(environment: environment),
+      withFineDependencies: options.withFineDependencies,
     );
     var pluginWatcher = PluginWatcher(
       resourceProvider,

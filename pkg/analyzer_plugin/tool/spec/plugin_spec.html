@@ -59,6 +59,14 @@
           that is executing the plugin.
         </p>
       </field>
+      <field name="withFineDependencies" optional="true">
+        <ref>bool</ref>
+        <p>
+          Whether the analysis server tracks fine-grained dependencies between
+          libraries. Plugins should create their analysis contexts with the same
+          setting. If omitted, fine-grained dependency tracking is disabled.
+        </p>
+      </field>
     </params>
     <result>
       <field name="isCompatible">

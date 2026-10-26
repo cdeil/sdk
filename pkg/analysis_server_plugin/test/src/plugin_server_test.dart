@@ -271,6 +271,32 @@ class PluginServerTest extends PluginServerTestBase with PluginServerTestMixin {
     await startPlugin();
   }
 
+  Future<void> test_versionCheck_fineDependencies_default() async {
+    writeAnalysisOptionsWithPlugin();
+    newFile(filePath, 'bool b = false;');
+    await _setContextRootsAndReadFirstErrors();
+    var driver =
+        pluginServer.contextCollectionForTesting!.contexts.single.driver;
+    expect(driver.withFineDependencies, isFalse);
+  }
+
+  Future<void> test_versionCheck_fineDependencies_enabled() async {
+    await pluginServer.handlePluginVersionCheck(
+      protocol.PluginVersionCheckParams(
+        byteStoreRoot.path,
+        sdkRoot.path,
+        '0.0.1',
+        withFineDependencies: true,
+      ),
+    );
+    writeAnalysisOptionsWithPlugin();
+    newFile(filePath, 'bool b = false;');
+    await _setContextRootsAndReadFirstErrors();
+    var driver =
+        pluginServer.contextCollectionForTesting!.contexts.single.driver;
+    expect(driver.withFineDependencies, isTrue);
+  }
+
   Future<void> test_diagnosticsCanBeIgnored() async {
     writeAnalysisOptionsWithPlugin();
     newFile(filePath, '''

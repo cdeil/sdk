@@ -223,12 +223,20 @@ class PluginIsolate {
   ///
   /// Returns the [PluginSession] used to interact with the plugin, or `null` if
   /// the plugin could not be run.
-  Future<PluginSession?> start(String? byteStorePath, String sdkPath) async {
+  Future<PluginSession?> start(
+    String? byteStorePath,
+    String sdkPath, {
+    bool withFineDependencies = false,
+  }) async {
     if (currentSession != null) {
       throw StateError('Cannot start a plugin that is already running.');
     }
     currentSession = PluginSession(this);
-    var isRunning = await currentSession!.start(byteStorePath, sdkPath);
+    var isRunning = await currentSession!.start(
+      byteStorePath,
+      sdkPath,
+      withFineDependencies: withFineDependencies,
+    );
     if (!isRunning) {
       currentSession = null;
     }
@@ -514,7 +522,11 @@ class PluginSession {
   ///
   /// The plugin will be sent the given [byteStorePath]. Returns whether the
   /// plugin is compatible and running.
-  Future<bool> start(String? byteStorePath, String sdkPath) async {
+  Future<bool> start(
+    String? byteStorePath,
+    String sdkPath, {
+    bool withFineDependencies = false,
+  }) async {
     if (channel != null) {
       throw StateError('Cannot start a plugin that is already running.');
     }
@@ -560,7 +572,12 @@ class PluginSession {
       return false;
     }
     var response = await sendRequest(
-      PluginVersionCheckParams(byteStorePath, sdkPath, '1.0.0-alpha.0'),
+      PluginVersionCheckParams(
+        byteStorePath,
+        sdkPath,
+        '1.0.0-alpha.0',
+        withFineDependencies: withFineDependencies,
+      ),
     );
     var result = PluginVersionCheckResult.fromResponse(response);
     isCompatible = result.isCompatible;

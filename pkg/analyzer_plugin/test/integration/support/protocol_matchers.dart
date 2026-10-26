@@ -1702,13 +1702,14 @@ final Matcher isPluginStatusParams = LazyMatcher(
 ///       "byteStorePath": FilePath
 ///       "sdkPath": FilePath
 ///       "version": String
+///       "withFineDependencies": optional bool
 ///     }
 final Matcher isPluginVersionCheckParams = LazyMatcher(
-  () => MatchesJsonObject('plugin.versionCheck params', {
-    'byteStorePath': isFilePath,
-    'sdkPath': isFilePath,
-    'version': isString,
-  }),
+  () => MatchesJsonObject(
+    'plugin.versionCheck params',
+    {'byteStorePath': isFilePath, 'sdkPath': isFilePath, 'version': isString},
+    optionalFields: {'withFineDependencies': isBool},
+  ),
 );
 
 /// plugin.versionCheck result

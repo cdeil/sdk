@@ -151,6 +151,10 @@ class PluginManager {
   /// The version of the Dart SDK that this plugin manager is running in.
   final String _dartVersion;
 
+  /// Whether the server tracks fine-grained dependencies between libraries;
+  /// forwarded to plugins so that they analyze the same way.
+  final bool withFineDependencies;
+
   /// The set of context root paths with no configured _new_ plugins.
   final contextRootsWithNoPlugins = <String>{};
 
@@ -166,6 +170,7 @@ class PluginManager {
     this.instrumentationService,
     this.sessionLogger, {
     this._processRunner = const ProcessRunner(),
+    this.withFineDependencies = false,
     @visibleForTesting String? dartVersion,
   }) : _dartVersion = dartVersion ?? platform.version;
 
@@ -231,7 +236,11 @@ class PluginManager {
     try {
       instrumentationService.logInfo('Starting plugin "$pluginIsolate"');
       sessionLogger.logInfo('Starting plugin "$pluginIsolate"');
-      var session = await pluginIsolate.start(_byteStorePath, _sdkPath);
+      var session = await pluginIsolate.start(
+        _byteStorePath,
+        _sdkPath,
+        withFineDependencies: withFineDependencies,
+      );
       unawaited(
         session?.onDone.then((_) {
           if (_pluginMap[path] == pluginIsolate) {
