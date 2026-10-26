@@ -5084,6 +5084,7 @@ class PluginStatusParams implements HasToJson {
 ///       "byteStorePath": FilePath
 ///       "sdkPath": FilePath
 ///       "version": String
+///       "withFineDependencies": optional bool
 ///     }
 ///
 /// Clients may not extend, implement or mix-in this class.
@@ -5100,7 +5101,17 @@ class PluginVersionCheckParams implements RequestParams {
   /// that is executing the plugin.
   String version;
 
-  PluginVersionCheckParams(this.byteStorePath, this.sdkPath, this.version);
+  /// Whether the analysis server tracks fine-grained dependencies between
+  /// libraries. Plugins should create their analysis contexts with the same
+  /// setting. If omitted, fine-grained dependency tracking is disabled.
+  bool? withFineDependencies;
+
+  PluginVersionCheckParams(
+    this.byteStorePath,
+    this.sdkPath,
+    this.version, {
+    this.withFineDependencies,
+  });
 
   factory PluginVersionCheckParams.fromJson(
     JsonDecoder jsonDecoder,
@@ -5148,7 +5159,19 @@ class PluginVersionCheckParams implements RequestParams {
     } else {
       throw jsonDecoder.mismatch(jsonPath, "'version'", json);
     }
-    return PluginVersionCheckParams(byteStorePath, sdkPath, version);
+    bool? withFineDependencies;
+    if (json case {'withFineDependencies': var encodedWithFineDependencies}) {
+      withFineDependencies = jsonDecoder.decodeBool(
+        '$jsonPath.withFineDependencies',
+        encodedWithFineDependencies,
+      );
+    }
+    return PluginVersionCheckParams(
+      byteStorePath,
+      sdkPath,
+      version,
+      withFineDependencies: withFineDependencies,
+    );
   }
 
   factory PluginVersionCheckParams.fromRequest(
@@ -5171,6 +5194,9 @@ class PluginVersionCheckParams implements RequestParams {
     result['sdkPath'] =
         clientUriConverter?.toClientFilePath(sdkPath) ?? sdkPath;
     result['version'] = version;
+    if (withFineDependencies case var withFineDependencies?) {
+      result['withFineDependencies'] = withFineDependencies;
+    }
     return result;
   }
 
@@ -5191,13 +5217,15 @@ class PluginVersionCheckParams implements RequestParams {
     if (other is PluginVersionCheckParams) {
       return byteStorePath == other.byteStorePath &&
           sdkPath == other.sdkPath &&
-          version == other.version;
+          version == other.version &&
+          withFineDependencies == other.withFineDependencies;
     }
     return false;
   }
 
   @override
-  int get hashCode => Object.hash(byteStorePath, sdkPath, version);
+  int get hashCode =>
+      Object.hash(byteStorePath, sdkPath, version, withFineDependencies);
 }
 
 /// plugin.versionCheck result

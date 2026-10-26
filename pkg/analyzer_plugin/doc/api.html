@@ -148,6 +148,7 @@ a:focus, a:hover {
     "<b>byteStorePath</b>": <a href="#type_FilePath">FilePath</a>
     "<b>sdkPath</b>": <a href="#type_FilePath">FilePath</a>
     "<b>version</b>": String
+    "<b>withFineDependencies</b>": <span style="color:#999999">optional</span> bool
   }
 }</pre><br><pre>response: {
   "id": String
@@ -183,6 +184,13 @@ a:focus, a:hover {
         <p>
           The version number of the plugin spec supported by the analysis server
           that is executing the plugin.
+        </p>
+      </dd><dt class="field"><b>withFineDependencies: bool<span style="color:#999999"> (optional)</span></b></dt><dd>
+        
+        <p>
+          Whether the analysis server tracks fine-grained dependencies between
+          libraries. Plugins should create their analysis contexts with the same
+          setting. If omitted, fine-grained dependency tracking is disabled.
         </p>
       </dd></dl><h4>returns:</h4><dl><dt class="field"><b>isCompatible: bool</b></dt><dd>
         

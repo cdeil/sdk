@@ -46,6 +46,12 @@ abstract class IntegrationTestMixin {
   ///   The version number of the plugin spec supported by the analysis server
   ///   that is executing the plugin.
   ///
+  /// * `withFineDependencies: bool (optional)`
+  ///
+  ///   Whether the analysis server tracks fine-grained dependencies between
+  ///   libraries. Plugins should create their analysis contexts with the same
+  ///   setting. If omitted, fine-grained dependency tracking is disabled.
+  ///
   /// Returns
   ///
   /// * `isCompatible: bool`
@@ -79,12 +85,14 @@ abstract class IntegrationTestMixin {
   Future<PluginVersionCheckResult> sendPluginVersionCheck(
     String byteStorePath,
     String sdkPath,
-    String version,
-  ) async {
+    String version, {
+    bool? withFineDependencies,
+  }) async {
     var params = PluginVersionCheckParams(
       byteStorePath,
       sdkPath,
       version,
+      withFineDependencies: withFineDependencies,
     ).toJson();
     var result = await server.send('plugin.versionCheck', params);
     var decoder = ResponseDecoder(null);

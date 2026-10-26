@@ -102,6 +102,10 @@ class PluginServer {
 
   String? _sdkPath;
 
+  /// Whether analysis contexts track fine-grained dependencies, as requested
+  /// by the server in `plugin.versionCheck`.
+  bool _withFineDependencies = false;
+
   /// Paths of priority files.
   Set<String> _priorityPaths = {};
 
@@ -344,6 +348,7 @@ class PluginServer {
     // the SDK path is configured...
     _sdkPath = parameters.sdkPath;
     _useFileByteStore(parameters.byteStorePath);
+    _withFineDependencies = parameters.withFineDependencies ?? false;
     return protocol.PluginVersionCheckResult(true, 'Plugin Server', '0.0.1', [
       '*.dart',
     ]);
@@ -368,6 +373,11 @@ class PluginServer {
     );
     _byteStore = MemoryCachingByteStore(fileByteStore, _memoryByteStoreSize);
   }
+
+  /// The analysis context collection, for tests.
+  @visibleForTesting
+  AnalysisContextCollectionImpl? get contextCollectionForTesting =>
+      _contextCollection;
 
   /// Initializes each of the registered plugins.
   Future<void> initialize() async {
@@ -709,7 +719,7 @@ class PluginServer {
           ({required analysisOptionsBuilder}) => analysisOptionsBuilder
             ..warning = false
             ..lint = false,
-      withFineDependencies: true,
+      withFineDependencies: _withFineDependencies,
       drainStreams: false,
     );
     _contextCollection = contextCollection;
