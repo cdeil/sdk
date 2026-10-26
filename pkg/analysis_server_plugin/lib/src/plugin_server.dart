@@ -6,6 +6,7 @@
 library;
 
 import 'dart:async';
+import 'dart:isolate' show Isolate;
 
 import 'package:analysis_server_plugin/edit/assist/assist.dart';
 import 'package:analysis_server_plugin/edit/assist/dart_assist_context.dart';
@@ -28,12 +29,14 @@ import 'package:analyzer/error/error.dart';
 import 'package:analyzer/error/listener.dart';
 import 'package:analyzer/file_system/file_system.dart';
 import 'package:analyzer/file_system/overlay_file_system.dart';
+import 'package:analyzer/file_system/physical_file_system.dart';
 import 'package:analyzer/instrumentation/instrumentation.dart';
 import 'package:analyzer/src/analysis_options/analysis_options.dart';
 import 'package:analyzer/src/analysis_rule/rule_context.dart';
 import 'package:analyzer/src/dart/analysis/analysis_context_collection.dart';
 import 'package:analyzer/src/dart/analysis/byte_store.dart';
 import 'package:analyzer/src/dart/analysis/driver_based_analysis_context.dart';
+import 'package:analyzer/src/dart/analysis/file_byte_store.dart';
 import 'package:analyzer/src/dart/analysis/file_content_cache.dart';
 import 'package:analyzer/src/dart/analysis/file_state.dart';
 import 'package:analyzer/src/dart/analysis/status.dart';
@@ -76,10 +79,24 @@ class PluginServer {
 
   final OverlayResourceProvider _resourceProvider;
 
-  late final ByteStore _byteStore = MemoryCachingByteStore(
+  /// The size of the in-memory layer of [_byteStore].
+  static const int _memoryByteStoreSize = 1024 * 1024 * 256;
+
+  /// The byte store used by every analysis context of this plugin.
+  ///
+  /// Until the server sends a `plugin.versionCheck` request with a byte store
+  /// path, or when the plugin does not run on the physical file system, results
+  /// are cached in memory only.
+  ByteStore _byteStore = MemoryCachingByteStore(
     NullByteStore(),
-    1024 * 1024 * 256,
+    _memoryByteStoreSize,
   );
+
+  /// The file-backed store behind [_byteStore], if any.
+  ///
+  /// The server owns the directory and its eviction; the plugin only reads and
+  /// writes entries, and flushes pending writes before it shuts down.
+  FileByteStore? _fileByteStore;
 
   AnalysisContextCollectionImpl? _contextCollection;
 
@@ -326,9 +343,30 @@ class PluginServer {
     // TODO(srawlins): It seems improper for _this_ method to be the point where
     // the SDK path is configured...
     _sdkPath = parameters.sdkPath;
+    _useFileByteStore(parameters.byteStorePath);
     return protocol.PluginVersionCheckResult(true, 'Plugin Server', '0.0.1', [
       '*.dart',
     ]);
+  }
+
+  /// The file-backed byte store, for tests.
+  @visibleForTesting
+  FileByteStore? get fileByteStoreForTesting => _fileByteStore;
+
+  /// Backs [_byteStore] with a [FileByteStore] in [byteStorePath], if the
+  /// path is not empty and the plugin runs on the physical file system.
+  ///
+  /// Several plugin isolates and the server itself can write to the same
+  /// directory; the temporary file name suffix keeps their writes apart.
+  void _useFileByteStore(String byteStorePath) {
+    if (byteStorePath.isEmpty) return;
+    if (_resourceProvider.baseProvider is! PhysicalResourceProvider) return;
+    if (_contextCollection != null) return;
+    var fileByteStore = _fileByteStore = FileByteStore(
+      byteStorePath,
+      tempNameSuffix: 'plugin-${Isolate.current.hashCode}',
+    );
+    _byteStore = MemoryCachingByteStore(fileByteStore, _memoryByteStoreSize);
   }
 
   /// Initializes each of the registered plugins.
@@ -802,6 +840,7 @@ class PluginServer {
         await Future.wait(
           _plugins.map((p) => p.shutDown()).whereType<Future<Object?>>(),
         );
+        await _fileByteStore?.flush();
         _channel.sendResponse(
           protocol.PluginShutdownResult().toResponse(request.id, requestTime),
         );
