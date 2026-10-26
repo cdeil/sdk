@@ -61,10 +61,24 @@ class EvictingFileByteStore implements ByteStore {
   int? _lastKnownSizeBytes;
   int? _lastScannedFileCount;
 
+  /// The name of the file in the cache directory whose modification time
+  /// records when the last clean up finished.
+  static const String cleanUpStampName = '.clean-up-stamp';
+
+  /// How long a clean up stamp makes new stores skip the start-up scan.
+  static const Duration cleanUpStampMaxAge = Duration(hours: 1);
+
   new(this._cachePath, this._maxSizeBytes)
     : _fileByteStore = FileByteStore(_cachePath) {
-    _requestCacheCleanUp();
+    if (!_hasRecentCleanUpStamp()) {
+      _cleanUpFuture = _requestCacheCleanUp();
+    }
   }
+
+  /// The clean up requested by the constructor, if any, for tests.
+  Future<void>? _cleanUpFuture;
+
+  Future<void>? get cleanUpFutureForTesting => _cleanUpFuture;
 
   String get cachePath => _cachePath;
   int get cleanUpCount => _cleanUpCount;
@@ -94,7 +108,7 @@ class EvictingFileByteStore implements ByteStore {
     // Update the current size.
     _bytesWrittenSinceCleanup += bytes.length;
     if (_bytesWrittenSinceCleanup > _maxSizeBytes ~/ 8) {
-      _requestCacheCleanUp();
+      unawaited(_requestCacheCleanUp());
     }
     return bytes;
   }
@@ -102,8 +116,24 @@ class EvictingFileByteStore implements ByteStore {
   @override
   void release(Iterable<String> keys) {}
 
+  /// Whether a clean up finished recently enough that the start-up scan can
+  /// be skipped.
+  ///
+  /// Writes by this store still request a clean up after `_maxSizeBytes / 8`
+  /// bytes, so the directory stays bounded; the stamp only avoids rescanning
+  /// an unchanged directory from every new process.
+  bool _hasRecentCleanUpStamp() {
+    try {
+      var stamp = File(join(_cachePath, cleanUpStampName));
+      var modified = stamp.lastModifiedSync();
+      return DateTime.now().difference(modified) < cleanUpStampMaxAge;
+    } catch (_) {
+      return false;
+    }
+  }
+
   /// If the cache clean up process has not been requested yet, request it.
-  void _requestCacheCleanUp() async {
+  Future<void> _requestCacheCleanUp() async {
     if (_cleanUpSendPortShouldBePrepared) {
       _cleanUpSendPortShouldBePrepared = false;
       ReceivePort response = ReceivePort();
@@ -174,6 +204,7 @@ class EvictingFileByteStore implements ByteStore {
     int deletedFileCount = 0;
     for (FileSystemEntity resource in resources) {
       if (resource is File) {
+        if (basename(resource.path) == cleanUpStampName) continue;
         try {
           FileStat fileStat = resource.statSync();
           // Make sure that the file was not deleted out from under us (a return
@@ -204,6 +235,10 @@ class EvictingFileByteStore implements ByteStore {
         deletedFileCount++;
       } catch (_) {}
     }
+
+    try {
+      File(join(cachePath, cleanUpStampName)).writeAsStringSync('');
+    } catch (_) {}
 
     return CacheCleanUpResult(
       currentSizeBytes: currentSizeBytes,

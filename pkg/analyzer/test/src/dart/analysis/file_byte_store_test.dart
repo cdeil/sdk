@@ -2,16 +2,59 @@
 // for details. All rights reserved. Use of this source code is governed by a
 // BSD-style license that can be found in the LICENSE file.
 
+import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:analyzer/src/dart/analysis/file_byte_store.dart';
+import 'package:path/path.dart';
 import 'package:test/test.dart';
 import 'package:test_reflective_loader/test_reflective_loader.dart';
 
 main() {
   defineReflectiveSuite(() {
+    defineReflectiveTests(EvictingFileByteStoreTest);
     defineReflectiveTests(FileByteStoreValidatorTest);
   });
+}
+
+@reflectiveTest
+class EvictingFileByteStoreTest {
+  late Directory tempDirectory;
+
+  void setUp() {
+    tempDirectory = Directory.systemTemp.createTempSync('evicting_byte_store');
+  }
+
+  void tearDown() {
+    tempDirectory.deleteSync(recursive: true);
+  }
+
+  Future<void> test_startUpScan_skippedAfterRecentCleanUp() async {
+    var first = EvictingFileByteStore(tempDirectory.path, 1024 * 1024);
+    await first.cleanUpFutureForTesting;
+    expect(first.cleanUpCount, 1);
+    var stamp = File(
+      join(tempDirectory.path, EvictingFileByteStore.cleanUpStampName),
+    );
+    expect(stamp.existsSync(), isTrue);
+
+    var second = EvictingFileByteStore(tempDirectory.path, 1024 * 1024);
+    expect(second.cleanUpFutureForTesting, isNull);
+    expect(second.cleanUpCount, 0);
+
+    stamp.setLastModifiedSync(
+      DateTime.now().subtract(const Duration(hours: 2)),
+    );
+    var third = EvictingFileByteStore(tempDirectory.path, 1024 * 1024);
+    await third.cleanUpFutureForTesting;
+    expect(third.cleanUpCount, 1);
+  }
+
+  Future<void> test_startUpScan_ignoresStamp() async {
+    var store = EvictingFileByteStore(tempDirectory.path, 1024 * 1024);
+    await store.cleanUpFutureForTesting;
+    expect(store.lastScannedFileCount, 0);
+  }
 }
 
 @reflectiveTest
