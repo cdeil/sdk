@@ -151,7 +151,12 @@ bool b = false;'''),
     newFile(filePath, 'bool b = false;');
     newFile(testFilePath, 'bool b = false;');
 
+    var paramsQueue = _analysisErrorsParams;
     await _setRoots();
+    // Consume the diagnostics of the initial analysis, so that only those
+    // produced with the new configurations are read below.
+    await paramsQueue.next;
+    await paramsQueue.next;
 
     await channel.sendRequest(
       protocol.AnalysisSetConfigurationsParams({
@@ -162,7 +167,6 @@ bool b = false;'''),
       }),
     );
 
-    var paramsQueue = _analysisErrorsParams;
     var params1 = await paramsQueue.next;
     var params2 = await paramsQueue.next;
 
@@ -182,7 +186,12 @@ bool b = false;'''),
     newFile(filePath, 'bool b = false;');
     newFile(testFilePath, 'bool b = false;');
 
+    var paramsQueue = _analysisErrorsParams;
     await _setRoots();
+    // Consume the diagnostics of the initial analysis, so that only those
+    // produced with the new configurations are read below.
+    await paramsQueue.next;
+    await paramsQueue.next;
 
     await channel.sendRequest(
       protocol.AnalysisSetConfigurationsParams({
@@ -199,7 +208,6 @@ bool b = false;'''),
       }),
     );
 
-    var paramsQueue = _analysisErrorsParams;
     var params1 = await paramsQueue.next;
     var params2 = await paramsQueue.next;
 
