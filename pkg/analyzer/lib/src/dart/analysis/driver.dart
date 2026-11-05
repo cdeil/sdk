@@ -132,6 +132,9 @@ class AnalysisDriver {
   /// zero, we stop writing any new exception contexts in this process.
   static int allowedNumberOfContextsToWrite = 10;
 
+  /// The number of results kept in [_recentResolvedLibraries].
+  static const int _recentResolvedLibrariesCapacity = 8;
+
   /// The scheduler that schedules analysis work in this, and possibly other
   /// analysis drivers.
   final AnalysisDriverScheduler _scheduler;
@@ -263,6 +266,14 @@ class AnalysisDriver {
 
   /// Cached results of [getResolvedLibrary].
   final Map<String, ResolvedLibraryResultImpl> _resolvedLibraryCache = {};
+
+  /// The most recently produced results of libraries without priority files,
+  /// in production order, so that a [getResolvedLibrary] request that follows
+  /// the [ResolvedUnitResult] events of a library does not resolve it again.
+  ///
+  /// Bounded to [_recentResolvedLibrariesCapacity] entries; invalidated
+  /// together with [_resolvedLibraryCache].
+  final Map<String, ResolvedLibraryResultImpl> _recentResolvedLibraries = {};
 
   /// The controller for the [exceptions] stream.
   final StreamController<ExceptionResult> _exceptionController =
@@ -582,6 +593,7 @@ class AnalysisDriver {
     if (file_paths.isDart(resourceProvider.pathContext, path)) {
       _priorityResults.clear();
       _resolvedLibraryCache.clear();
+      _recentResolvedLibraries.clear();
       _pendingFileChanges.add(FileChange(path, FileChangeKind.add));
       _scheduler.notify();
     }
@@ -684,6 +696,7 @@ class AnalysisDriver {
       _lastProducedDiagnosticIds.remove(file);
       _priorityResults.clear();
       _resolvedLibraryCache.clear();
+      _recentResolvedLibraries.clear();
       _pendingFileChanges.add(FileChange(path, FileChangeKind.change));
       _scheduler._fileUpdatesStatistics.changedFiles.add(path);
       _scheduler.notify();
@@ -707,6 +720,7 @@ class AnalysisDriver {
     // The cached results belong to the discarded session.
     _priorityResults.clear();
     _resolvedLibraryCache.clear();
+    _recentResolvedLibraries.clear();
   }
 
   /// Discards data that is expensive to keep in memory, and can be computed
@@ -1044,7 +1058,8 @@ class AnalysisDriver {
       return Future.value(DisposedAnalysisContextResult());
     }
 
-    if (_resolvedLibraryCache[path] case var cached?) {
+    if (_resolvedLibraryCache[path] ?? _recentResolvedLibraries[path]
+        case var cached?) {
       return cached;
     }
 
@@ -1309,6 +1324,7 @@ class AnalysisDriver {
       _lastProducedDiagnosticIds.remove(file);
       _priorityResults.clear();
       _resolvedLibraryCache.clear();
+      _recentResolvedLibraries.clear();
       _pendingFileChanges.add(FileChange(path, FileChangeKind.remove));
       _scheduler._fileUpdatesStatistics.removedFiles.add(path);
       _scheduler.notify();
@@ -1534,6 +1550,15 @@ class AnalysisDriver {
 
         if (isLibraryWithPriorityFile) {
           _resolvedLibraryCache[library.file.path] = libraryResult;
+        } else {
+          _recentResolvedLibraries.remove(library.file.path);
+          _recentResolvedLibraries[library.file.path] = libraryResult;
+          if (_recentResolvedLibraries.length >
+              _recentResolvedLibrariesCapacity) {
+            _recentResolvedLibraries.remove(
+              _recentResolvedLibraries.keys.first,
+            );
+          }
         }
 
         // getResolvedLibrary()
@@ -2052,7 +2077,8 @@ class AnalysisDriver {
         throw UnimplementedError('(${kind.runtimeType}) $kind');
     }
 
-    if (_resolvedLibraryCache[path] case var cached?) {
+    if (_resolvedLibraryCache[path] ?? _recentResolvedLibraries[path]
+        case var cached?) {
       _requestedLibraries.completeAll(path, cached);
       return;
     }
